@@ -275,7 +275,6 @@ main() {
     echo ""
     echo -e "${BOLD}Use Python:${RESET}"
     echo "  python3.11 script.py"
-    echo "  python3.12 script.py"
     echo "  python3.13 script.py"
     echo ""
     echo -e "${BOLD}Create a virtual environment:${RESET}"
