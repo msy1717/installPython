@@ -1,115 +1,140 @@
 # Python Multi-Version Installer
 
-Installs **Python 3.11, 3.12, and 3.13** via [pyenv](https://github.com/pyenv/pyenv) — works on both **Termux (Android)** and **VPS / Linux servers** (Debian, Ubuntu, CentOS, RHEL, Fedora).
+Installs **Python 3.11, 3.12, and 3.13** on both **Termux (Android)** and **VPS/Linux servers**.
 
 ---
 
-## One-Line Install
+## ⚡ One-Line Install
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/msy1717/installPython/main/install.sh | bash
 ```
 
-**Or clone and run locally:**
+> Run this in Termux or your VPS terminal. The script auto-detects your environment.
 
-```bash
-git clone https://github.com/msy1717/installPython.git
-cd installPython
-bash install.sh
+---
+
+## 🔧 Before Running — Fix Termux apt (REQUIRED if you see liblz4 error)
+
+If you see this error:
+```
+CANNOT LINK EXECUTABLE "apt": library "liblz4.so.1" not found
 ```
 
+**Run these commands in order:**
+
+```bash
+# Step 1 — Change to a working mirror
+termux-change-repo
+```
+> A menu opens. Use arrow keys to select **Grimler** (or any other), then press OK.
+
+```bash
+# Step 2 — Update packages
+pkg update -y
+```
+
+```bash
+# Step 3 — Now run the installer
+curl -sSL https://raw.githubusercontent.com/msy1717/installPython/main/install.sh | bash
+```
+
+> **Note:** If Python 3.11/3.12/3.13 are already installed, the script will detect them automatically and skip installation — no need to fix apt in that case.
+
 ---
 
-## What It Does
+## 📋 All Commands
 
-1. **Detects your environment** — Termux, Debian/Ubuntu, RHEL/CentOS/Fedora, or generic Linux
-2. **Installs the right system dependencies** for your platform (uses correct package names for Termux vs standard Linux)
-3. **Installs pyenv** — a version manager that compiles Python without needing root
-4. **Builds Python 3.11, 3.12, and 3.13** (latest patch releases)
-5. **Sets Python 3.12 as the global default**
-6. **Updates your shell config** (`~/.bashrc`, `~/.zshrc`, etc.) so pyenv is always available
+### Install
+```bash
+curl -sSL https://raw.githubusercontent.com/msy1717/installPython/main/install.sh | bash
+```
 
----
-
-## After Install
-
-Reload your shell once:
-
+### Reload shell after install (run once)
 ```bash
 source ~/.bashrc
 ```
 
-All three versions are set as pyenv globals, so their shims are immediately available:
-
+### Check Python versions
 ```bash
 python3.11 --version
 python3.12 --version
 python3.13 --version
 ```
 
-Switch the active version for a session:
-
+### Run a script
 ```bash
-pyenv shell 3.13.x    # use 3.13 in this terminal session
-pyenv shell --unset   # go back to global default
+python3.11 script.py
+python3.12 script.py
+python3.13 script.py
 ```
 
-See all installed versions:
-
+### Create a virtual environment
 ```bash
+# Using built-in venv
+python3.12 -m venv myenv
+source myenv/bin/activate
+
+# Deactivate when done
+deactivate
+```
+
+### Using pyenv (installed automatically on VPS)
+```bash
+# List all installed versions
 pyenv versions
-```
 
----
+# Switch Python version for current session
+pyenv shell 3.13.x
 
-## Virtual Environments
+# Go back to default
+pyenv shell --unset
 
-```bash
-# Using pyenv-virtualenv (installed alongside pyenv)
+# Create pyenv virtual environment
 pyenv virtualenv 3.12.x myproject
 pyenv activate myproject
 pyenv deactivate
+```
 
-# Or with standard venv
-python3.12 -m venv venv
-source venv/bin/activate
+### Fix Termux apt manually (if termux-change-repo doesn't work)
+```bash
+# Option 1 — reinstall Termux tools
+pkg install termux-tools -y
+termux-change-repo
+
+# Option 2 — force fix apt
+pkg install -y liblz4
+pkg update -y
 ```
 
 ---
 
-## Supported Environments
+## ✅ Supported Environments
 
-| Environment         | Status |
-|---------------------|--------|
-| Termux (Android)    | ✅     |
-| Debian / Ubuntu VPS | ✅     |
-| CentOS / RHEL / Fedora | ✅  |
-| macOS (via Homebrew) | ⚠️ Not tested — use `brew install pyenv` instead |
-
----
-
-## Why pyenv?
-
-The original script compiled Python from source using `apt` packages that **don't exist in Termux** (e.g. `libssl-dev`, `zlib1g-dev`, `software-properties-common`). pyenv handles the compilation internally with correct flags for each platform, so the same script works everywhere without modification.
+| Environment              | Python install method   |
+|--------------------------|-------------------------|
+| Termux (Android)         | `pkg install python3.xx`|
+| Debian / Ubuntu VPS      | pyenv (build from source)|
+| CentOS / RHEL / Fedora   | pyenv (build from source)|
 
 ---
 
-## Troubleshooting
+## 🛠️ Troubleshooting
 
-**`pyenv: command not found` after install**
+| Problem | Fix |
+|--------|-----|
+| `liblz4.so.1 not found` | Run `termux-change-repo` then `pkg update -y` |
+| `pyenv: command not found` | Run `source ~/.bashrc` |
+| One Python version fails to build | Script continues with the others automatically |
+| `pkg install python3.13` fails | Not yet in Termux repos — script will try pyenv |
+| VPS build fails | Run `sudo apt-get install -y build-essential libssl-dev` |
+
+---
+
+## 📁 Clone and run locally
+
 ```bash
-source ~/.bashrc
+git clone https://github.com/msy1717/installPython.git
+cd installPython
+bash install.sh
 ```
-
-**Build fails on Termux**
-```bash
-pkg update && pkg upgrade -y
-```
-
-**Build fails on VPS**
-```bash
-sudo apt-get update && sudo apt-get install -y build-essential libssl-dev
-```
-
-**Skip a version that fails**  
-The script uses `-s` (skip if already installed) and reports warnings without aborting, so one failed version won't block the others.
