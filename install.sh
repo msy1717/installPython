@@ -1,285 +1,221 @@
-#!/bin/bash
-# ============================================================
-# Python Multi-Version Installer (Termux + VPS)
-# Installs Python 3.11, 3.12, 3.13
-# Works on: Android (Termux), Debian/Ubuntu VPS, RHEL/CentOS
-# One-line usage:
-#   curl -sSL https://raw.githubusercontent.com/msy1717/installPython/main/install.sh | bash
-# ============================================================
+#!/usr/bin/env bash
 
 set -e
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-BLUE='\033[0;34m'; BOLD='\033[1m'; RESET='\033[0m'
+echo "========================================="
+echo "        PYTHON ENVIRONMENT SETUP"
+echo "========================================="
 
-info()    { echo -e "${BLUE}ℹ️  $1${RESET}"; }
-success() { echo -e "${GREEN}✅ $1${RESET}"; }
-warn()    { echo -e "${YELLOW}⚠️  $1${RESET}"; }
-error()   { echo -e "${RED}❌ $1${RESET}"; exit 1; }
-section() { echo -e "\n${BOLD}${BLUE}==> $1${RESET}"; }
+# -----------------------------------------
+# Detect OS
+# -----------------------------------------
 
-# ── Detect environment ──────────────────────────────────────
-detect_env() {
-    if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ] || echo "${PREFIX:-}" | grep -q termux 2>/dev/null; then
-        echo "termux"
-    elif [ -f "/etc/debian_version" ] || grep -qi "ubuntu\|debian" /etc/os-release 2>/dev/null; then
-        echo "debian"
-    elif [ -f "/etc/redhat-release" ] || grep -qi "centos\|fedora\|rhel" /etc/os-release 2>/dev/null; then
-        echo "redhat"
-    else
-        echo "generic"
+if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
+    OS="termux"
+elif [ -f /etc/debian_version ]; then
+    OS="debian"
+else
+    OS="unknown"
+fi
+
+echo "[+] Detected: $OS"
+
+# -----------------------------------------
+# TERMUX
+# -----------------------------------------
+
+if [ "$OS" = "termux" ]; then
+
+    echo "[+] Setting up Termux storage..."
+    termux-setup-storage || true
+
+    echo "[+] Updating Termux..."
+    pkg update -y
+    pkg upgrade -y
+
+    echo "[+] Installing required packages..."
+
+    pkg install -y \
+        git \
+        curl \
+        wget \
+        clang \
+        make \
+        cmake \
+        pkg-config \
+        openssl \
+        libffi \
+        rust \
+        nano \
+        unzip \
+        tar \
+        xz-utils \
+        python
+
+    echo "[+] Python version:"
+    python --version
+
+    echo "[+] Bootstrapping pip..."
+
+    python -m ensurepip --upgrade || true
+
+    python -m pip install --upgrade pip setuptools wheel
+
+    PYTHON_CMD="python"
+
+# -----------------------------------------
+# DEBIAN / UBUNTU VPS
+# -----------------------------------------
+
+elif [ "$OS" = "debian" ]; then
+
+    echo "[+] Updating VPS..."
+    apt-get update
+
+    echo "[+] Installing system dependencies..."
+
+    apt-get install -y \
+        software-properties-common \
+        build-essential \
+        curl \
+        wget \
+        git \
+        ca-certificates \
+        pkg-config \
+        libssl-dev \
+        libffi-dev \
+        zlib1g-dev \
+        libbz2-dev \
+        libreadline-dev \
+        libsqlite3-dev \
+        libncursesw5-dev \
+        xz-utils \
+        tk-dev \
+        libxml2-dev \
+        libxmlsec1-dev \
+        liblzma-dev \
+        rustc \
+        cargo
+
+    # Deadsnakes for Ubuntu
+    if command -v add-apt-repository >/dev/null 2>&1; then
+        add-apt-repository -y ppa:deadsnakes/ppa || true
+        apt-get update
     fi
-}
 
-# ── Sudo helper ─────────────────────────────────────────────
-get_sudo() {
-    if [ "$(id -u)" = "0" ]; then echo ""
-    elif command -v sudo &>/dev/null; then echo "sudo"
-    else echo ""
-    fi
-}
+    echo ""
+    echo "========================================="
+    echo "Available Python versions"
+    echo "========================================="
 
-# ── Termux: preflight check ─────────────────────────────────
-termux_preflight() {
-    # Test if apt/pkg is functional (broken liblz4 is a common Termux issue)
-    if ! apt --version &>/dev/null 2>&1; then
-        echo -e "${RED}"
-        echo "╔══════════════════════════════════════════════════════════╗"
-        echo "║  Termux apt is broken (likely missing liblz4.so.1)      ║"
-        echo "║                                                          ║"
-        echo "║  Fix it first by running these commands:                ║"
-        echo "║                                                          ║"
-        echo "║  1. termux-change-repo                                  ║"
-        echo "║     (pick any working mirror, e.g. Grimler)             ║"
-        echo "║                                                          ║"
-        echo "║  2. Then re-run this script:                            ║"
-        echo "║     curl -sSL https://raw.githubusercontent.com/       ║"
-        echo "║     msy1717/installPython/main/install.sh | bash        ║"
-        echo "╚══════════════════════════════════════════════════════════╝"
-        echo -e "${RESET}"
-        exit 1
-    fi
-}
+    for V in 3.11 3.12 3.13; do
 
-# ── Termux: install Python via pkg (fast path) ──────────────
-termux_install_python_pkg() {
-    section "Installing Python via Termux packages (fast path)"
-    PKG_INSTALLED=()
-
-    for MINOR in "3.11" "3.12" "3.13"; do
-        # Termux package names: python3.11, python3.12, python3.13
-        PKG="python${MINOR}"
-        if pkg list-installed 2>/dev/null | grep -q "^${PKG}"; then
-            success "Python $MINOR already installed (pkg)"
-            PKG_INSTALLED+=("$MINOR")
-        elif pkg install -y "$PKG" 2>/dev/null; then
-            success "Python $MINOR installed via pkg"
-            PKG_INSTALLED+=("$MINOR")
+        if command -v "python$V" >/dev/null 2>&1; then
+            echo "[OK] Python $V already installed"
         else
-            warn "Python $MINOR not available in Termux repos — will build via pyenv"
-        fi
-    done
+            echo "[+] Trying to install Python $V..."
 
-    echo "${PKG_INSTALLED[@]}"
-}
-
-# ── Termux: install build deps for pyenv ────────────────────
-install_deps_termux() {
-    section "Installing Termux build dependencies"
-    pkg update -y 2>/dev/null || warn "pkg update failed — continuing with cached packages"
-    for dep in curl wget git openssl libffi zlib xz-utils bzip2 readline sqlite make clang binutils patchelf; do
-        pkg install -y "$dep" 2>/dev/null || warn "Could not install $dep — skipping"
-    done
-    success "Termux build dependencies ready"
-}
-
-# ── VPS: install system deps ─────────────────────────────────
-install_deps_debian() {
-    section "Installing Debian/Ubuntu dependencies"
-    SUDO=$(get_sudo)
-    $SUDO apt-get update -y
-    $SUDO apt-get install -y \
-        curl wget git build-essential \
-        libssl-dev zlib1g-dev libncurses5-dev libncursesw5-dev \
-        libreadline-dev libsqlite3-dev libgdbm-dev \
-        libbz2-dev libexpat1-dev liblzma-dev libffi-dev \
-        uuid-dev tk-dev xz-utils
-    success "Debian/Ubuntu dependencies installed"
-}
-
-install_deps_redhat() {
-    section "Installing RHEL/CentOS/Fedora dependencies"
-    SUDO=$(get_sudo)
-    PKG_MGR=$(command -v dnf &>/dev/null && echo dnf || echo yum)
-    $SUDO $PKG_MGR groupinstall -y "Development Tools" 2>/dev/null || true
-    $SUDO $PKG_MGR install -y \
-        curl wget git openssl-devel zlib-devel ncurses-devel \
-        readline-devel sqlite-devel gdbm-devel bzip2-devel \
-        expat-devel xz-devel libffi-devel uuid-devel tk-devel
-    success "RHEL/CentOS/Fedora dependencies installed"
-}
-
-# ── Install pyenv ────────────────────────────────────────────
-install_pyenv() {
-    section "Setting up pyenv"
-    if [ -d "$HOME/.pyenv" ]; then
-        info "pyenv already exists — updating"
-        cd "$HOME/.pyenv" && git pull --quiet && cd - > /dev/null
-    else
-        info "Downloading pyenv..."
-        curl -fsSL https://pyenv.run | bash
-    fi
-
-    export PYENV_ROOT="$HOME/.pyenv"
-    export PATH="$PYENV_ROOT/bin:$PATH"
-    eval "$(pyenv init -)" 2>/dev/null || true
-    eval "$(pyenv virtualenv-init -)" 2>/dev/null || true
-    success "pyenv ready"
-}
-
-# ── Persist pyenv in shell config ───────────────────────────
-setup_shell_config() {
-    PYENV_INIT_BLOCK='
-# pyenv setup (added by install.sh)
-export PYENV_ROOT="$HOME/.pyenv"
-export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init -)"
-eval "$(pyenv virtualenv-init -)" 2>/dev/null || true
-'
-    for RC in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile" "$HOME/.zshrc"; do
-        if [ -f "$RC" ] && ! grep -q 'pyenv init' "$RC" 2>/dev/null; then
-            echo "$PYENV_INIT_BLOCK" >> "$RC"
-            info "Added pyenv init to $RC"
-        fi
-    done
-}
-
-# ── Install Python versions via pyenv ───────────────────────
-install_python_pyenv() {
-    local SKIP_MINORS=("$@")   # versions already installed by pkg
-    section "Installing remaining Python versions via pyenv"
-
-    PYENV_INSTALLED=()
-
-    for MINOR in "3.11" "3.12" "3.13"; do
-        # Skip if already installed via pkg
-        local SKIP=0
-        for S in "${SKIP_MINORS[@]:-}"; do [ "$S" = "$MINOR" ] && SKIP=1 && break; done
-        [ "$SKIP" = "1" ] && continue
-
-        info "Looking up latest Python $MINOR patch..."
-        FULL=$(pyenv install --list 2>/dev/null \
-            | grep -E "^\s+${MINOR}\.[0-9]+$" \
-            | tail -1 | tr -d ' ')
-
-        if [ -z "$FULL" ]; then
-            warn "No release found for Python $MINOR — skipping"
-            continue
+            apt-get install -y \
+                "python$V" \
+                "python$V-venv" \
+                "python$V-dev" \
+                2>/dev/null || \
+            echo "[!] Python $V not available from current repositories"
         fi
 
-        if pyenv versions --bare 2>/dev/null | grep -qx "$FULL"; then
-            info "Python $FULL already installed — skipping build"
-            PYENV_INSTALLED+=("$FULL")
-        else
-            info "Building Python $FULL (takes a few minutes on mobile)..."
-            if pyenv install -s "$FULL"; then
-                success "Python $FULL built"
-                PYENV_INSTALLED+=("$FULL")
+    done
+
+    echo ""
+    echo "========================================="
+    echo "PIP CHECK"
+    echo "========================================="
+
+    for V in 3.11 3.12 3.13; do
+
+        PY="python$V"
+
+        if command -v "$PY" >/dev/null 2>&1; then
+
+            echo ""
+            echo "[+] Checking $PY"
+
+            "$PY" --version
+
+            if "$PY" -m pip --version >/dev/null 2>&1; then
+                echo "[OK] pip already available"
             else
-                warn "Failed to build Python $FULL — skipping"
+                echo "[+] Creating pip environment..."
+
+                "$PY" -m ensurepip --upgrade 2>/dev/null || true
             fi
+
+            "$PY" -m pip install --upgrade pip setuptools wheel \
+                2>/dev/null || true
         fi
+
     done
 
-    if [ ${#PYENV_INSTALLED[@]} -gt 0 ]; then
-        GLOBAL_ARGS="${PYENV_INSTALLED[*]}"
-        pyenv global $GLOBAL_ARGS
-        success "pyenv global set: $GLOBAL_ARGS"
-    fi
-}
+    PYTHON_CMD="python3"
 
-# ── Verify ───────────────────────────────────────────────────
-verify() {
-    section "Verifying installed versions"
-    for MINOR in "3.11" "3.12" "3.13"; do
-        # Check pkg path (Termux)
-        if command -v "python${MINOR}" &>/dev/null; then
-            VER=$("python${MINOR}" --version 2>&1)
-            success "$VER  (python${MINOR})"
-            continue
-        fi
-        # Check pyenv path
-        VER_BARE=$(pyenv versions --bare 2>/dev/null | grep "^${MINOR}\." | tail -1)
-        if [ -n "$VER_BARE" ]; then
-            PYBIN="$HOME/.pyenv/versions/$VER_BARE/bin/python3"
-            [ -x "$PYBIN" ] && success "$($PYBIN --version 2>&1)  (pyenv: $VER_BARE)" && continue
-        fi
-        warn "Python $MINOR — not found"
-    done
-}
+else
 
-# ── Main ─────────────────────────────────────────────────────
-main() {
-    echo -e "${BOLD}"
-    echo "╔══════════════════════════════════════════╗"
-    echo "║   Python Multi-Version Installer         ║"
-    echo "║   Supports: Termux + VPS (Debian/RHEL)  ║"
-    echo "╚══════════════════════════════════════════╝"
-    echo -e "${RESET}"
+    echo "[ERROR] Unsupported operating system."
+    exit 1
 
-    ENV=$(detect_env)
-    info "Detected environment: $ENV"
+fi
 
-    if [ "$ENV" = "termux" ]; then
-        termux_preflight             # exit early if apt is broken
+# -----------------------------------------
+# PROJECT DIRECTORY
+# -----------------------------------------
 
-        # Fast path: install available versions directly via pkg
-        PKG_DONE_STR=$(termux_install_python_pkg)
-        read -ra PKG_DONE <<< "$PKG_DONE_STR"
+echo ""
+echo "========================================="
+echo "PROJECT CHECK"
+echo "========================================="
 
-        # Check if any version still needs pyenv
-        NEED_PYENV=0
-        for MINOR in "3.11" "3.12" "3.13"; do
-            FOUND=0
-            for D in "${PKG_DONE[@]:-}"; do [ "$D" = "$MINOR" ] && FOUND=1 && break; done
-            [ "$FOUND" = "0" ] && NEED_PYENV=1
-        done
+if [ -f "requirements.txt" ]; then
 
-        if [ "$NEED_PYENV" = "1" ]; then
-            install_deps_termux
-            install_pyenv
-            setup_shell_config
-            install_python_pyenv "${PKG_DONE[@]:-}"
-        else
-            info "All versions installed via pkg — pyenv not needed"
-        fi
+    echo "[+] requirements.txt found"
 
-    else
-        case "$ENV" in
-            debian)  install_deps_debian ;;
-            redhat)  install_deps_redhat ;;
-            generic) warn "Unknown distro — trying Debian-style install"
-                     install_deps_debian ;;
-        esac
-        install_pyenv
-        setup_shell_config
-        install_python_pyenv
-    fi
+    echo "[+] Installing Python requirements..."
 
-    verify
+    "$PYTHON_CMD" -m pip install -r requirements.txt
 
-    echo ""
-    echo -e "${BOLD}${GREEN}🎉 All done!${RESET}"
-    echo ""
-    echo -e "${BOLD}Reload your shell:${RESET}  source ~/.bashrc"
-    echo ""
-    echo -e "${BOLD}Use Python:${RESET}"
-    echo "  python3.11 script.py"
-    echo "  python3.13 script.py"
-    echo ""
-    echo -e "${BOLD}Create a virtual environment:${RESET}"
-    echo "  python3.12 -m venv venv && source venv/bin/activate"
-    echo ""
-}
+elif [ -f "setup.py" ]; then
 
-main "$@"
+    echo "[+] setup.py found"
+
+    echo "[!] Not executing setup.py automatically."
+    echo "[!] Install dependencies with requirements.txt instead."
+
+else
+
+    echo "[!] No requirements.txt found."
+
+fi
+
+# -----------------------------------------
+# TEST
+# -----------------------------------------
+
+echo ""
+echo "========================================="
+echo "PYTHON TEST"
+echo "========================================="
+
+"$PYTHON_CMD" -c "
+import sys
+print('Python:', sys.version)
+print('Python executable:', sys.executable)
+
+try:
+    import pip
+    print('pip: OK')
+except Exception:
+    print('pip: NOT AVAILABLE')
+"
+
+echo ""
+echo "========================================="
+echo "SETUP COMPLETE"
+echo "========================================="
